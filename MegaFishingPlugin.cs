@@ -1,0 +1,287 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using BepInEx;
+using BepInEx.Configuration;
+using UnityEngine;
+
+namespace MegaFishing
+{
+    [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
+    public class MegaFishingPlugin : BaseUnityPlugin
+    {
+        private const string PluginGUID = "com.rikmods.megafishing";
+        private const string PluginName = "MegaFishing";
+        private const string PluginVersion = "1.0.0";
+
+        private ConfigEntry<bool> _modEnabled;
+        private ConfigEntry<float> _pullRadius;
+        private ConfigEntry<int> _fishLevelIncrease;
+        private ConfigEntry<float> _pullInterval;
+        private ConfigEntry<bool> _pullToPlayer;
+
+        private float _timer;
+        private FileSystemWatcher _configWatcher;
+        private bool _configDirty;
+
+        private void Awake()
+        {
+            _modEnabled = Config.Bind("General", "Enabled", true,
+                "Enable or disable the MegaFishing mod.");
+
+            _pullRadius = Config.Bind("General", "PullRadius", 20f,
+                new ConfigDescription(
+                    "Radius (in meters) within which fish items are pulled into containers.",
+                    new AcceptableValueRange<float>(1f, 100f)));
+
+            _fishLevelIncrease = Config.Bind("General", "FishLevelIncrease", 0,
+                new ConfigDescription(
+                    "Quality levels to add to fish when pulled into a container. " +
+                    "0 = no upgrade, 4 = maximum (+4 levels, e.g. level 1 becomes level 5).",
+                    new AcceptableValueRange<int>(0, 4)));
+
+            _pullInterval = Config.Bind("General", "PullIntervalSeconds", 5f,
+                new ConfigDescription(
+                    "How often (in seconds) containers scan for nearby fish to pull in.",
+                    new AcceptableValueRange<float>(1f, 60f)));
+
+            _pullToPlayer = Config.Bind("General", "PullToPlayer", false,
+                "When enabled, fish on the ground near the player are also pulled " +
+                "into the player's inventory (same radius / level-upgrade rules apply).");
+
+            SetupConfigWatcher();
+
+            Logger.LogInfo($"{PluginName} v{PluginVersion} loaded.");
+        }
+
+        private void OnDestroy()
+        {
+            if (_configWatcher != null)
+            {
+                _configWatcher.Changed -= OnConfigFileChanged;
+                _configWatcher.Dispose();
+                _configWatcher = null;
+            }
+        }
+
+        private void SetupConfigWatcher()
+        {
+            string configPath = Config.ConfigFilePath;
+            string directory = Path.GetDirectoryName(configPath);
+            string fileName = Path.GetFileName(configPath);
+
+            _configWatcher = new FileSystemWatcher(directory, fileName)
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size,
+                EnableRaisingEvents = true
+            };
+            _configWatcher.Changed += OnConfigFileChanged;
+        }
+
+        private void OnConfigFileChanged(object sender, FileSystemEventArgs e)
+        {
+            // Flag for reload on the main thread (FileSystemWatcher fires on a background thread).
+            _configDirty = true;
+        }
+
+        private void Update()
+        {
+            if (_configDirty)
+            {
+                _configDirty = false;
+                Config.Reload();
+                Logger.LogInfo("Configuration reloaded.");
+            }
+
+            if (!_modEnabled.Value || Player.m_localPlayer == null)
+                return;
+
+            _timer += Time.deltaTime;
+            if (_timer < _pullInterval.Value)
+                return;
+            _timer = 0f;
+
+            HashSet<ItemDrop> consumed = new HashSet<ItemDrop>();
+            PullFishIntoContainers(consumed);
+
+            if (_pullToPlayer.Value)
+                PullFishIntoPlayerInventory(consumed);
+        }
+
+        private void PullFishIntoContainers(HashSet<ItemDrop> consumed)
+        {
+            float radiusSq = _pullRadius.Value * _pullRadius.Value;
+            int levelIncrease = _fishLevelIncrease.Value;
+
+            Container[] containers = FindObjectsOfType<Container>();
+            if (containers.Length == 0)
+                return;
+
+            ItemDrop[] drops = FindObjectsOfType<ItemDrop>();
+            if (drops.Length == 0)
+                return;
+
+            foreach (Container container in containers)
+            {
+                if (container == null)
+                    continue;
+
+                ZNetView containerView = container.GetComponent<ZNetView>();
+                if (containerView == null || !containerView.IsValid())
+                    continue;
+
+                // Only the ZDO owner may modify the container (avoids desync).
+                if (!containerView.IsOwner())
+                    continue;
+
+                Inventory inventory = container.GetInventory();
+                if (inventory == null)
+                    continue;
+
+                // Collect the shared-name tokens of fish already stored in this container.
+                HashSet<string> fishNames = new HashSet<string>(StringComparer.Ordinal);
+                foreach (ItemDrop.ItemData item in inventory.GetAllItems())
+                {
+                    if (item?.m_shared != null && IsFishName(item.m_shared.m_name))
+                        fishNames.Add(item.m_shared.m_name);
+                }
+
+                if (fishNames.Count == 0)
+                    continue;
+
+                Vector3 pos = container.transform.position;
+
+                foreach (ItemDrop drop in drops)
+                {
+                    if (consumed.Contains(drop))
+                        continue;
+
+                    if (drop == null || drop.m_itemData?.m_shared == null)
+                        continue;
+
+                    ZNetView dropView = drop.GetComponent<ZNetView>();
+                    if (dropView == null || !dropView.IsValid())
+                        continue;
+
+                    // Squared-distance check (avoids sqrt).
+                    if ((drop.transform.position - pos).sqrMagnitude > radiusSq)
+                        continue;
+
+                    // Must match one of the fish types already in this container.
+                    if (!fishNames.Contains(drop.m_itemData.m_shared.m_name))
+                        continue;
+
+                    // Apply quality / level upgrade before adding.
+                    if (levelIncrease > 0)
+                    {
+                        int max = drop.m_itemData.m_shared.m_maxQuality > 0
+                            ? drop.m_itemData.m_shared.m_maxQuality
+                            : 5;
+                        drop.m_itemData.m_quality = Mathf.Min(
+                            drop.m_itemData.m_quality + levelIncrease, max);
+                    }
+
+                    // Only add if the container has room.
+                    if (!inventory.CanAddItem(drop.m_itemData))
+                        continue;
+
+                    inventory.AddItem(drop.m_itemData);
+
+                    // Remove the world object.
+                    dropView.ClaimOwnership();
+                    dropView.Destroy();
+                    consumed.Add(drop);
+                }
+            }
+        }
+
+        private void PullFishIntoPlayerInventory(HashSet<ItemDrop> consumed)
+        {
+            Player player = Player.m_localPlayer;
+            if (player == null)
+                return;
+
+            float radiusSq = _pullRadius.Value * _pullRadius.Value;
+            int levelIncrease = _fishLevelIncrease.Value;
+
+            Inventory inventory = player.GetInventory();
+            if (inventory == null)
+                return;
+
+            // Collect the fish types the player is already carrying.
+            HashSet<string> fishNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ItemDrop.ItemData item in inventory.GetAllItems())
+            {
+                if (item?.m_shared != null && IsFishName(item.m_shared.m_name))
+                    fishNames.Add(item.m_shared.m_name);
+            }
+
+            if (fishNames.Count == 0)
+                return;
+
+            Vector3 pos = player.transform.position;
+
+            ItemDrop[] drops = FindObjectsOfType<ItemDrop>();
+            foreach (ItemDrop drop in drops)
+            {
+                if (consumed.Contains(drop))
+                    continue;
+
+                if (drop == null || drop.m_itemData?.m_shared == null)
+                    continue;
+
+                ZNetView dropView = drop.GetComponent<ZNetView>();
+                if (dropView == null || !dropView.IsValid())
+                    continue;
+
+                if ((drop.transform.position - pos).sqrMagnitude > radiusSq)
+                    continue;
+
+                if (!fishNames.Contains(drop.m_itemData.m_shared.m_name))
+                    continue;
+
+                if (levelIncrease > 0)
+                {
+                    int max = drop.m_itemData.m_shared.m_maxQuality > 0
+                        ? drop.m_itemData.m_shared.m_maxQuality
+                        : 5;
+                    drop.m_itemData.m_quality = Mathf.Min(
+                        drop.m_itemData.m_quality + levelIncrease, max);
+                }
+
+                if (!inventory.CanAddItem(drop.m_itemData))
+                    continue;
+
+                inventory.AddItem(drop.m_itemData);
+
+                dropView.ClaimOwnership();
+                dropView.Destroy();
+                consumed.Add(drop);
+            }
+        }
+
+        /// <summary>
+        /// Returns true when the shared-name token matches the Valheim fish naming
+        /// convention — contains "fish" immediately followed by a digit (e.g.
+        /// "$item_fish1", "$item_fish12"). This correctly excludes unrelated items
+        /// such as FishingRod or FishingBait.
+        /// </summary>
+        private static bool IsFishName(string sharedName)
+        {
+            if (string.IsNullOrEmpty(sharedName))
+                return false;
+
+            int idx = sharedName.IndexOf("fish", StringComparison.OrdinalIgnoreCase);
+            while (idx >= 0)
+            {
+                int next = idx + 4;
+                if (next < sharedName.Length && char.IsDigit(sharedName[next]))
+                    return true;
+
+                idx = sharedName.IndexOf("fish", next, StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
+        }
+    }
+}
