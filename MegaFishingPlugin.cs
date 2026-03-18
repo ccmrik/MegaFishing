@@ -12,7 +12,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.3";
+        private const string PluginVersion = "1.0.4";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
@@ -102,13 +102,14 @@ namespace MegaFishing
             _timer = 0f;
 
             HashSet<ItemDrop> consumed = new HashSet<ItemDrop>();
-            PullFishIntoContainers(consumed);
+            ItemDrop[] allDrops = FindObjectsOfType<ItemDrop>();
+            PullFishIntoContainers(consumed, allDrops);
 
             if (_pullToPlayer.Value)
-                PullFishIntoPlayerInventory(consumed);
+                PullFishIntoPlayerInventory(consumed, allDrops);
         }
 
-        private void PullFishIntoContainers(HashSet<ItemDrop> consumed)
+        private void PullFishIntoContainers(HashSet<ItemDrop> consumed, ItemDrop[] drops)
         {
             float radiusSq = _pullRadius.Value * _pullRadius.Value;
             int levelIncrease = _fishLevelIncrease.Value;
@@ -117,7 +118,6 @@ namespace MegaFishing
             if (containers.Length == 0)
                 return;
 
-            ItemDrop[] drops = FindObjectsOfType<ItemDrop>();
             if (drops.Length == 0)
                 return;
 
@@ -195,7 +195,7 @@ namespace MegaFishing
             }
         }
 
-        private void PullFishIntoPlayerInventory(HashSet<ItemDrop> consumed)
+        private void PullFishIntoPlayerInventory(HashSet<ItemDrop> consumed, ItemDrop[] drops)
         {
             Player player = Player.m_localPlayer;
             if (player == null)
@@ -221,7 +221,6 @@ namespace MegaFishing
 
             Vector3 pos = player.transform.position;
 
-            ItemDrop[] drops = FindObjectsOfType<ItemDrop>();
             foreach (ItemDrop drop in drops)
             {
                 if (consumed.Contains(drop))
