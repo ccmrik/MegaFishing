@@ -12,13 +12,14 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.4";
+        private const string PluginVersion = "1.0.5";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
         private ConfigEntry<int> _fishLevelIncrease;
         private ConfigEntry<float> _pullInterval;
         private ConfigEntry<bool> _pullToPlayer;
+        private ConfigEntry<bool> _debugMode;
 
         private float _timer;
         private FileSystemWatcher _configWatcher;
@@ -48,6 +49,9 @@ namespace MegaFishing
             _pullToPlayer = Config.Bind("General", "PullToPlayer", false,
                 "When enabled, fish on the ground near the player are also pulled " +
                 "into the player's inventory (same radius / level-upgrade rules apply).");
+
+            _debugMode = Config.Bind("Debug", "DebugMode", false,
+                "Enable verbose debug logging to BepInEx console/log");
 
             SetupConfigWatcher();
 
