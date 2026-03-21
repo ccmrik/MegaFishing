@@ -12,7 +12,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.5";
+        private const string PluginVersion = "1.0.6";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
