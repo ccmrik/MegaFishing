@@ -5,12 +5,12 @@
     <LangVersion>9.0</LangVersion>
     <AssemblyName>MegaFishing</AssemblyName>
     <RootNamespace>MegaFishing</RootNamespace>
-    <Version>1.0.6</Version>
+    <Version>1.0.7</Version>
   </PropertyGroup>
 
   <PropertyGroup>
     <ValheimPath>C:\Program Files (x86)\Steam\steamapps\common\Valheim</ValheimPath>
-    <BepInExPath>C:\Users\Rik\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Valheim Min Mods\BepInEx</BepInExPath>
+    <BepInExPath>$(APPDATA)\MegaLoad\profiles\a01aed19fecf3a0d\BepInEx</BepInExPath>
     <PluginDeployDir>$(BepInExPath)\plugins\MegaFishing</PluginDeployDir>
   </PropertyGroup>
 
@@ -42,12 +42,11 @@
       <HintPath>$(ValheimPath)\valheim_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
-  </ItemGroup>
 
-  <!-- Copy the built DLL straight into the BepInEx plugins folder -->
-  <Target Name="DeployToPlugins" AfterTargets="Build">
-    <MakeDir Directories="$(PluginDeployDir)" Condition="!Exists('$(PluginDeployDir)')" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginDeployDir)" />
-  </Target>
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExPath)\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
 
 </Project>

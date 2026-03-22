@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using BepInEx;
 using BepInEx.Configuration;
+using HarmonyLib;
 using UnityEngine;
 
 namespace MegaFishing
@@ -12,11 +13,11 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.6";
+        private const string PluginVersion = "1.0.7";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
-        private ConfigEntry<int> _fishLevelIncrease;
+        internal ConfigEntry<int> _fishLevelIncrease;
         private ConfigEntry<float> _pullInterval;
         private ConfigEntry<bool> _pullToPlayer;
         private ConfigEntry<bool> _debugMode;
@@ -24,6 +25,8 @@ namespace MegaFishing
         private float _timer;
         private FileSystemWatcher _configWatcher;
         private bool _configDirty;
+
+        internal static MegaFishingPlugin Instance;
 
         private void Awake()
         {
@@ -54,6 +57,9 @@ namespace MegaFishing
                 "Enable verbose debug logging to BepInEx console/log");
 
             SetupConfigWatcher();
+
+            Instance = this;
+            new Harmony(PluginGUID).PatchAll();
 
             Logger.LogInfo($"{PluginName} v{PluginVersion} loaded.");
         }
@@ -269,7 +275,7 @@ namespace MegaFishing
         /// "$item_fish1", "$item_fish12"). This correctly excludes unrelated items
         /// such as FishingRod or FishingBait.
         /// </summary>
-        private static bool IsFishName(string sharedName)
+        internal static bool IsFishName(string sharedName)
         {
             if (string.IsNullOrEmpty(sharedName))
                 return false;
@@ -285,6 +291,33 @@ namespace MegaFishing
             }
 
             return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(FishingFloat), nameof(FishingFloat.Catch))]
+    static class FishingFloat_Catch_Patch
+    {
+        static void Prefix(Fish fish)
+        {
+            if (fish == null || MegaFishingPlugin.Instance == null)
+                return;
+
+            int levelIncrease = MegaFishingPlugin.Instance._fishLevelIncrease.Value;
+            if (levelIncrease <= 0)
+                return;
+
+            ItemDrop itemDrop = fish.gameObject.GetComponent<ItemDrop>();
+            if (itemDrop?.m_itemData?.m_shared == null)
+                return;
+
+            if (!MegaFishingPlugin.IsFishName(itemDrop.m_itemData.m_shared.m_name))
+                return;
+
+            int max = itemDrop.m_itemData.m_shared.m_maxQuality > 0
+                ? itemDrop.m_itemData.m_shared.m_maxQuality
+                : 5;
+            itemDrop.m_itemData.m_quality = Mathf.Min(
+                itemDrop.m_itemData.m_quality + levelIncrease, max);
         }
     }
 }
