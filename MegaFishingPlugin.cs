@@ -13,7 +13,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.8";
+        private const string PluginVersion = "1.0.9";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
@@ -30,30 +30,30 @@ namespace MegaFishing
 
         private void Awake()
         {
-            _modEnabled = Config.Bind("General", "Enabled", true,
+            _modEnabled = Config.Bind("1. General", "Enabled", true,
                 "Enable or disable the MegaFishing mod.");
 
-            _pullRadius = Config.Bind("General", "PullRadius", 20f,
+            _pullRadius = Config.Bind("1. General", "PullRadius", 20f,
                 new ConfigDescription(
                     "Radius (in meters) within which fish items are pulled into containers.",
                     new AcceptableValueRange<float>(1f, 100f)));
 
-            _fishLevelIncrease = Config.Bind("General", "FishLevelIncrease", 0,
+            _fishLevelIncrease = Config.Bind("1. General", "FishLevelIncrease", 0,
                 new ConfigDescription(
                     "Quality levels to add to fish when pulled into a container. " +
                     "0 = no upgrade, 4 = maximum (+4 levels, e.g. level 1 becomes level 5).",
                     new AcceptableValueRange<int>(0, 4)));
 
-            _pullInterval = Config.Bind("General", "PullIntervalSeconds", 5f,
+            _pullInterval = Config.Bind("1. General", "PullIntervalSeconds", 5f,
                 new ConfigDescription(
                     "How often (in seconds) containers scan for nearby fish to pull in.",
                     new AcceptableValueRange<float>(1f, 60f)));
 
-            _pullToPlayer = Config.Bind("General", "PullToPlayer", false,
+            _pullToPlayer = Config.Bind("1. General", "PullToPlayer", false,
                 "When enabled, fish on the ground near the player are also pulled " +
                 "into the player's inventory (same radius / level-upgrade rules apply).");
 
-            _debugMode = Config.Bind("Debug", "DebugMode", false,
+            _debugMode = Config.Bind("2. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             SetupConfigWatcher();
