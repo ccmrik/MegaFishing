@@ -13,7 +13,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.10";
+        private const string PluginVersion = "1.0.11";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
@@ -31,6 +31,7 @@ namespace MegaFishing
         private void Awake()
         {
             MigrateConfig(Config.ConfigFilePath);
+            Config.Reload();
 
             _modEnabled = Config.Bind("1. General", "Enabled", true,
                 "Enable or disable the MegaFishing mod.");
