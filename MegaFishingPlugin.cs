@@ -13,7 +13,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.7";
+        private const string PluginVersion = "1.0.8";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
@@ -112,7 +112,7 @@ namespace MegaFishing
             _timer = 0f;
 
             HashSet<ItemDrop> consumed = new HashSet<ItemDrop>();
-            ItemDrop[] allDrops = FindObjectsOfType<ItemDrop>();
+            ItemDrop[] allDrops = FindObjectsByType<ItemDrop>(FindObjectsSortMode.None);
             PullFishIntoContainers(consumed, allDrops);
 
             if (_pullToPlayer.Value)
@@ -124,7 +124,7 @@ namespace MegaFishing
             float radiusSq = _pullRadius.Value * _pullRadius.Value;
             int levelIncrease = _fishLevelIncrease.Value;
 
-            Container[] containers = FindObjectsOfType<Container>();
+            Container[] containers = FindObjectsByType<Container>(FindObjectsSortMode.None);
             if (containers.Length == 0)
                 return;
 

@@ -3,3 +3,6 @@ obj/
 .vs/
 *.user
 *.suo
+
+# Maintenance reports
+maintenance-report.json
