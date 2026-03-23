@@ -13,7 +13,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.9";
+        private const string PluginVersion = "1.0.10";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
@@ -30,6 +30,8 @@ namespace MegaFishing
 
         private void Awake()
         {
+            MigrateConfig(Config.ConfigFilePath);
+
             _modEnabled = Config.Bind("1. General", "Enabled", true,
                 "Enable or disable the MegaFishing mod.");
 
@@ -291,6 +293,45 @@ namespace MegaFishing
             }
 
             return false;
+        }
+
+        private static void MigrateConfig(string configPath)
+        {
+            try
+            {
+                if (!File.Exists(configPath)) return;
+                string text = File.ReadAllText(configPath);
+                bool changed = false;
+
+                changed |= MigrateCfgSection(ref text, "General", "1. General");
+                changed |= MigrateCfgSection(ref text, "Debug", "2. Debug");
+
+                if (changed)
+                    File.WriteAllText(configPath, text.TrimEnd() + "\n");
+            }
+            catch { }
+        }
+
+        private static bool MigrateCfgSection(ref string text, string oldName, string newName)
+        {
+            string oldHeader = "[" + oldName + "]";
+            int idx = text.IndexOf(oldHeader, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return false;
+
+            int sectionEnd = text.IndexOf("\n[", idx + oldHeader.Length, StringComparison.Ordinal);
+
+            if (newName == null || text.IndexOf("[" + newName + "]", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                if (sectionEnd < 0)
+                    text = text.Substring(0, idx).TrimEnd('\r', '\n');
+                else
+                    text = text.Substring(0, idx) + text.Substring(sectionEnd + 1);
+            }
+            else
+            {
+                text = text.Remove(idx, oldHeader.Length).Insert(idx, "[" + newName + "]");
+            }
+            return true;
         }
     }
 
