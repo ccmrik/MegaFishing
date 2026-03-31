@@ -4,5 +4,7 @@ obj/
 *.user
 *.suo
 
+*.code-workspace
+
 # Maintenance reports
 maintenance-report.json
