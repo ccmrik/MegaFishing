@@ -12,8 +12,8 @@ namespace MegaFishing
     public class MegaFishingPlugin : BaseUnityPlugin
     {
         private const string PluginGUID = "com.rikmods.megafishing";
-        private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.1.0";
+        private const string PluginName = "Mega Fishing";
+        private const string PluginVersion = "1.1.1";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
