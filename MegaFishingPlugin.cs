@@ -13,14 +13,19 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "MegaFishing";
-        private const string PluginVersion = "1.0.11";
+        private const string PluginVersion = "1.1.0";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
         internal ConfigEntry<int> _fishLevelIncrease;
         private ConfigEntry<float> _pullInterval;
         private ConfigEntry<bool> _pullToPlayer;
-        private ConfigEntry<bool> _debugMode;
+        public static ConfigEntry<bool> DebugMode;
+
+        /// <summary>Gated diagnostic log. Silent unless DebugMode = true.</summary>
+        public static void Log(string msg) { if (DebugMode?.Value == true) Instance?.Logger.LogInfo(msg); }
+        /// <summary>Unconditional log — reserved for milestones and genuine errors.</summary>
+        public static void LogAlways(string msg) => Instance?.Logger.LogInfo(msg);
 
         private float _timer;
         private FileSystemWatcher _configWatcher;
@@ -56,7 +61,7 @@ namespace MegaFishing
                 "When enabled, fish on the ground near the player are also pulled " +
                 "into the player's inventory (same radius / level-upgrade rules apply).");
 
-            _debugMode = Config.Bind("2. Debug", "DebugMode", false,
+            DebugMode = Config.Bind("99. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             SetupConfigWatcher();
@@ -305,7 +310,8 @@ namespace MegaFishing
                 bool changed = false;
 
                 changed |= MigrateCfgSection(ref text, "General", "1. General");
-                changed |= MigrateCfgSection(ref text, "Debug", "2. Debug");
+                changed |= MigrateCfgSection(ref text, "Debug", "99. Debug");
+                changed |= MigrateCfgSection(ref text, "2. Debug", "99. Debug");
 
                 if (changed)
                     File.WriteAllText(configPath, text.TrimEnd() + "\n");
