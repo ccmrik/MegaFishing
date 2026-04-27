@@ -13,13 +13,14 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "Mega Fishing";
-        private const string PluginVersion = "1.1.2";
+        private const string PluginVersion = "1.1.3";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
         internal ConfigEntry<int> _fishLevelIncrease;
         private ConfigEntry<float> _pullInterval;
         private ConfigEntry<bool> _pullToPlayer;
+        private ConfigEntry<bool> _showPickupEffect;
         public static ConfigEntry<bool> DebugMode;
 
         /// <summary>Gated diagnostic log. Silent unless DebugMode = true.</summary>
@@ -60,6 +61,10 @@ namespace MegaFishing
             _pullToPlayer = Config.Bind("1. General", "PullToPlayer", false,
                 "When enabled, fish on the ground near the player are also pulled " +
                 "into the player's inventory (same radius / level-upgrade rules apply).");
+
+            _showPickupEffect = Config.Bind("1. General", "ShowPickupEffect", true,
+                "Play the fish's vanilla pickup sound at each container or the player " +
+                "when MegaFishing pulls fish in, so the harvest is audible.");
 
             DebugMode = Config.Bind("99. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
@@ -172,6 +177,7 @@ namespace MegaFishing
                     continue;
 
                 Vector3 pos = container.transform.position;
+                bool pulledAny = false;
 
                 foreach (ItemDrop drop in drops)
                 {
@@ -215,12 +221,16 @@ namespace MegaFishing
                         continue;
 
                     inventory.AddItem(drop.m_itemData);
+                    pulledAny = true;
 
                     // Remove the world object.
                     dropView.ClaimOwnership();
                     dropView.Destroy();
                     consumed.Add(drop);
                 }
+
+                if (pulledAny)
+                    PlayPickupEffect(pos);
             }
         }
 
@@ -253,6 +263,7 @@ namespace MegaFishing
                 return;
 
             Vector3 pos = player.transform.position;
+            bool pulledAny = false;
 
             foreach (ItemDrop drop in drops)
             {
@@ -288,10 +299,40 @@ namespace MegaFishing
                     continue;
 
                 inventory.AddItem(drop.m_itemData);
+                pulledAny = true;
 
                 dropView.ClaimOwnership();
                 dropView.Destroy();
                 consumed.Add(drop);
+            }
+
+            if (pulledAny)
+                PlayPickupEffect(pos);
+        }
+
+        /// <summary>
+        /// Coalesced pickup-effect trigger — fires the local Player's vanilla
+        /// pickup EffectList (the same SFX you hear when manually grabbing loot)
+        /// once per destination per scan tick. A wave of twenty fish pulled into
+        /// one chest produces one pluck, not twenty stacked on top.
+        /// </summary>
+        private void PlayPickupEffect(Vector3 position)
+        {
+            if (_showPickupEffect == null || !_showPickupEffect.Value)
+                return;
+
+            Player player = Player.m_localPlayer;
+            EffectList effects = player?.m_pickupEffects;
+            if (effects?.m_effectPrefabs == null || effects.m_effectPrefabs.Length == 0)
+                return;
+
+            try
+            {
+                effects.Create(position, Quaternion.identity);
+            }
+            catch (Exception ex)
+            {
+                Log($"PlayPickupEffect failed: {ex.Message}");
             }
         }
 
