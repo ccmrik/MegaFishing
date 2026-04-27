@@ -13,7 +13,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "Mega Fishing";
-        private const string PluginVersion = "1.1.3";
+        private const string PluginVersion = "1.1.4";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
@@ -63,8 +63,9 @@ namespace MegaFishing
                 "into the player's inventory (same radius / level-upgrade rules apply).");
 
             _showPickupEffect = Config.Bind("1. General", "ShowPickupEffect", true,
-                "Play the fish's vanilla pickup sound at each container or the player " +
-                "when MegaFishing pulls fish in, so the harvest is audible.");
+                "Show the vanilla TopLeft pickup HUD line (with fish icon and count) " +
+                "and play the pickup SFX when MegaFishing pulls fish into a chest or " +
+                "the player. One coalesced line per destination per scan tick.");
 
             DebugMode = Config.Bind("99. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
@@ -177,7 +178,7 @@ namespace MegaFishing
                     continue;
 
                 Vector3 pos = container.transform.position;
-                bool pulledAny = false;
+                Dictionary<string, PullSummary> pulled = null;
 
                 foreach (ItemDrop drop in drops)
                 {
@@ -220,8 +221,11 @@ namespace MegaFishing
                     if (!inventory.CanAddItem(drop.m_itemData))
                         continue;
 
-                    inventory.AddItem(drop.m_itemData);
-                    pulledAny = true;
+                    int stack = drop.m_itemData.m_stack;
+                    if (!inventory.AddItem(drop.m_itemData))
+                        continue;
+
+                    RecordPull(ref pulled, drop.m_itemData, stack);
 
                     // Remove the world object.
                     dropView.ClaimOwnership();
@@ -229,8 +233,8 @@ namespace MegaFishing
                     consumed.Add(drop);
                 }
 
-                if (pulledAny)
-                    PlayPickupEffect(pos);
+                if (pulled != null)
+                    ShowPickupFeedback(pulled, pos);
             }
         }
 
@@ -263,7 +267,7 @@ namespace MegaFishing
                 return;
 
             Vector3 pos = player.transform.position;
-            bool pulledAny = false;
+            Dictionary<string, PullSummary> pulled = null;
 
             foreach (ItemDrop drop in drops)
             {
@@ -298,41 +302,92 @@ namespace MegaFishing
                 if (!inventory.CanAddItem(drop.m_itemData))
                     continue;
 
-                inventory.AddItem(drop.m_itemData);
-                pulledAny = true;
+                int stack = drop.m_itemData.m_stack;
+                if (!inventory.AddItem(drop.m_itemData))
+                    continue;
+
+                RecordPull(ref pulled, drop.m_itemData, stack);
 
                 dropView.ClaimOwnership();
                 dropView.Destroy();
                 consumed.Add(drop);
             }
 
-            if (pulledAny)
-                PlayPickupEffect(pos);
+            if (pulled != null)
+                ShowPickupFeedback(pulled, pos);
+        }
+
+        /// <summary>Per-fish-name accumulator used to coalesce HUD messages so
+        /// twenty drops landing in one tick produce one "+20" line, not twenty
+        /// stacked "+1"s.</summary>
+        private struct PullSummary
+        {
+            public int Amount;
+            public Sprite Icon;
+        }
+
+        private static void RecordPull(ref Dictionary<string, PullSummary> bucket, ItemDrop.ItemData item, int stack)
+        {
+            if (item?.m_shared == null)
+                return;
+            if (bucket == null)
+                bucket = new Dictionary<string, PullSummary>(StringComparer.Ordinal);
+
+            string key = item.m_shared.m_name;
+            if (bucket.TryGetValue(key, out PullSummary prev))
+            {
+                prev.Amount += stack;
+                bucket[key] = prev;
+            }
+            else
+            {
+                Sprite icon = null;
+                try { icon = item.GetIcon(); } catch { }
+                bucket[key] = new PullSummary { Amount = stack, Icon = icon };
+            }
         }
 
         /// <summary>
-        /// Coalesced pickup-effect trigger — fires the local Player's vanilla
-        /// pickup EffectList (the same SFX you hear when manually grabbing loot)
-        /// once per destination per scan tick. A wave of twenty fish pulled into
-        /// one chest produces one pluck, not twenty stacked on top.
+        /// Mimics the vanilla pickup feedback (TopLeft HUD line + pickup SFX)
+        /// once per destination per scan tick. The HUD line uses the standard
+        /// "$msg_added" template so it reads identically to a manual loot grab,
+        /// just rolled up per fish type. The audio side fires the local Player's
+        /// m_pickupEffects, which is a no-op when that EffectList is empty.
         /// </summary>
-        private void PlayPickupEffect(Vector3 position)
+        private void ShowPickupFeedback(Dictionary<string, PullSummary> pulled, Vector3 position)
         {
             if (_showPickupEffect == null || !_showPickupEffect.Value)
                 return;
 
             Player player = Player.m_localPlayer;
-            EffectList effects = player?.m_pickupEffects;
-            if (effects?.m_effectPrefabs == null || effects.m_effectPrefabs.Length == 0)
+            if (player == null)
                 return;
 
             try
             {
-                effects.Create(position, Quaternion.identity);
+                EffectList effects = player.m_pickupEffects;
+                if (effects?.m_effectPrefabs != null && effects.m_effectPrefabs.Length > 0)
+                    effects.Create(position, Quaternion.identity);
             }
             catch (Exception ex)
             {
-                Log($"PlayPickupEffect failed: {ex.Message}");
+                Log($"Pickup SFX failed: {ex.Message}");
+            }
+
+            try
+            {
+                foreach (KeyValuePair<string, PullSummary> kv in pulled)
+                {
+                    player.Message(
+                        MessageHud.MessageType.TopLeft,
+                        "$msg_added " + kv.Key,
+                        kv.Value.Amount,
+                        kv.Value.Icon);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Pickup HUD message failed: {ex.Message}");
             }
         }
 
