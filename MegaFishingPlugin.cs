@@ -13,7 +13,7 @@ namespace MegaFishing
     {
         private const string PluginGUID = "com.rikmods.megafishing";
         private const string PluginName = "Mega Fishing";
-        private const string PluginVersion = "1.1.4";
+        private const string PluginVersion = "1.1.9";
 
         private ConfigEntry<bool> _modEnabled;
         private ConfigEntry<float> _pullRadius;
@@ -163,15 +163,12 @@ namespace MegaFishing
                     continue;
 
                 // Collect the shared-name tokens of fish already stored in this container.
-                // Also passively repair any fish whose m_dropPrefab was lost — those items
-                // would otherwise NRE inside Smelter.IsItemAllowed at the Preparation Table.
                 HashSet<string> fishNames = new HashSet<string>(StringComparer.Ordinal);
                 foreach (ItemDrop.ItemData item in inventory.GetAllItems())
                 {
                     if (item?.m_shared == null || !IsFishName(item.m_shared.m_name))
                         continue;
                     fishNames.Add(item.m_shared.m_name);
-                    RepairDropPrefab(item);
                 }
 
                 if (fishNames.Count == 0)
@@ -210,12 +207,12 @@ namespace MegaFishing
                             drop.m_itemData.m_quality + levelIncrease, max);
                     }
 
-                    // Inventory.AddItem(ItemData) does not set m_dropPrefab. Smelter
-                    // (Preparation Table, Cooking Station, etc.) dereferences
-                    // item.m_dropPrefab.name, so pulling a drop with a null prefab
-                    // poisons the container — the recipe silently refuses.
-                    if (!EnsureDropPrefab(drop))
-                        continue;
+                    // Mirror vanilla Inventory.AddItem(GameObject,int) (Inventory.cs:93)
+                    // which stamps the current world level on every fresh pickup. The
+                    // ItemData overload doesn't, so without this the recipe filter
+                    // (Inventory.CountItems' `item.m_worldLevel >= Game.m_worldLevel`
+                    // gate) excludes pulled fish on any world above level 0.
+                    drop.m_itemData.m_worldLevel = (byte)Game.m_worldLevel;
 
                     // Only add if the container has room.
                     if (!inventory.CanAddItem(drop.m_itemData))
@@ -252,15 +249,12 @@ namespace MegaFishing
                 return;
 
             // Collect the fish types the player is already carrying.
-            // Also passively repair any fish whose m_dropPrefab was lost — those items
-            // would otherwise NRE inside Smelter.IsItemAllowed at the Preparation Table.
             HashSet<string> fishNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (ItemDrop.ItemData item in inventory.GetAllItems())
             {
                 if (item?.m_shared == null || !IsFishName(item.m_shared.m_name))
                     continue;
                 fishNames.Add(item.m_shared.m_name);
-                RepairDropPrefab(item);
             }
 
             if (fishNames.Count == 0)
@@ -296,8 +290,9 @@ namespace MegaFishing
                         drop.m_itemData.m_quality + levelIncrease, max);
                 }
 
-                if (!EnsureDropPrefab(drop))
-                    continue;
+                // Mirror vanilla Inventory.AddItem(GameObject,int) which stamps
+                // m_worldLevel on every fresh pickup; see PullFishIntoContainers.
+                drop.m_itemData.m_worldLevel = (byte)Game.m_worldLevel;
 
                 if (!inventory.CanAddItem(drop.m_itemData))
                     continue;
@@ -389,76 +384,6 @@ namespace MegaFishing
             {
                 Log($"Pickup HUD message failed: {ex.Message}");
             }
-        }
-
-        /// <summary>
-        /// Ensures the given drop's ItemData has a non-null m_dropPrefab before it's
-        /// handed to Inventory.AddItem. The AddItem(ItemData) overload does not set
-        /// m_dropPrefab itself, and Smelter.IsItemAllowed dereferences it — so any
-        /// ground drop lacking the prefab reference becomes invisible to the
-        /// Preparation Table / Cooking Station once stored. Returns false when the
-        /// prefab cannot be resolved, in which case the caller should skip the pull.
-        /// </summary>
-        private static bool EnsureDropPrefab(ItemDrop drop)
-        {
-            if (drop?.m_itemData?.m_shared == null)
-                return false;
-
-            if (drop.m_itemData.m_dropPrefab != null)
-                return true;
-
-            GameObject prefab = ResolvePrefabBySharedName(drop.m_itemData.m_shared.m_name);
-            if (prefab == null)
-            {
-                Log($"Skipping pull: no prefab found for {drop.m_itemData.m_shared.m_name}");
-                return false;
-            }
-
-            drop.m_itemData.m_dropPrefab = prefab;
-            Log($"Resolved missing m_dropPrefab for {drop.m_itemData.m_shared.m_name} -> {prefab.name}");
-            return true;
-        }
-
-        /// <summary>
-        /// In-place repair for items already living in an inventory with a null
-        /// m_dropPrefab. Runs as part of every pull scan so cursed fish heal
-        /// passively without needing a dedicated one-shot hook.
-        /// </summary>
-        private static void RepairDropPrefab(ItemDrop.ItemData item)
-        {
-            if (item?.m_shared == null || item.m_dropPrefab != null)
-                return;
-
-            GameObject prefab = ResolvePrefabBySharedName(item.m_shared.m_name);
-            if (prefab == null)
-                return;
-
-            item.m_dropPrefab = prefab;
-            Log($"Repaired null m_dropPrefab on stored {item.m_shared.m_name} -> {prefab.name}");
-        }
-
-        /// <summary>
-        /// Finds the prefab GameObject in ObjectDB whose ItemDrop carries the given
-        /// shared-name token (e.g. "$item_fish1"). Returns null when ObjectDB is not
-        /// yet initialised or no match exists.
-        /// </summary>
-        private static GameObject ResolvePrefabBySharedName(string sharedName)
-        {
-            ObjectDB db = ObjectDB.instance;
-            if (db == null || db.m_items == null || string.IsNullOrEmpty(sharedName))
-                return null;
-
-            for (int i = 0; i < db.m_items.Count; i++)
-            {
-                GameObject go = db.m_items[i];
-                if (go == null)
-                    continue;
-                ItemDrop drop = go.GetComponent<ItemDrop>();
-                if (drop?.m_itemData?.m_shared != null
-                    && drop.m_itemData.m_shared.m_name == sharedName)
-                    return go;
-            }
-            return null;
         }
 
         /// <summary>
